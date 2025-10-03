@@ -76,14 +76,45 @@ cargo run -- list-models
 cargo run -- --ollama-url http://custom:11434 list-models
 ```
 
-4. Ask Questions
-```bash
-# Ask a one-off question
-cargo run -- ask --model llama2 --prompt "What is the weather like?"
+### Interacting with Models
 
-# With debug logging
-cargo run -- --log-level debug ask --model codellama --prompt "How do I read a file in Rust?"
+The client provides two distinct ways to interact with Ollama models:
+
+#### Ask Command
+The `ask` command provides direct, simple interaction with an Ollama model:
+```bash
+# Direct question to model
+cargo run -- ask --model llama2 --prompt "What is REST API?"
 ```
+Use `ask` when you want:
+- Quick, simple questions
+- Direct model responses
+- No need for system tools
+- Learning or testing model capabilities
+- Documentation or explanation queries
+
+#### Chat Command
+The `chat` command enables complex interactions with tool integration:
+```bash
+# Tool-assisted interaction
+cargo run -- chat --model llama2 --prompt "Check my system's CPU usage"
+
+# Complex task with tool usage
+cargo run -- chat --model codellama --prompt "Monitor Docker containers and show their status"
+```
+Use `chat` when you need:
+- Access to system tools and information
+- Complex multi-step tasks
+- System monitoring and management
+- Tool-assisted analysis
+- Automated task execution
+
+The chat command:
+1. Loads available MCP tools
+2. Creates a context-aware system prompt
+3. Interprets model responses for tool usage
+4. Executes tools when requested
+5. Gets model interpretation of tool results
 
 ### Command-Line Arguments
 
@@ -91,6 +122,26 @@ Every command supports these global options:
 - `--ollama-url`: Ollama server URL (default: http://localhost:11434)
 - `--mcp-url`: MCP server URL (default: http://localhost:3001)
 - `--log-level`: Logging level (default: info)
+
+### Examples
+
+Direct Question (Ask):
+```bash
+# Simple coding question
+cargo run -- ask --model codellama --prompt "Explain how to use Result in Rust"
+
+# General knowledge query
+cargo run -- ask --model llama2 --prompt "What are the SOLID principles?"
+```
+
+Tool Integration (Chat):
+```bash
+# System monitoring
+cargo run -- chat --model llama2 --prompt "Check if any containers are using too much memory"
+
+# Complex analysis
+cargo run -- chat --model codellama --prompt "Analyze my system performance and suggest improvements"
+```
 
 ## Project Structure
 
