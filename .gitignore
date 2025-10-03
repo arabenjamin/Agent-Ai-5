@@ -1,0 +1,36 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.python-version
+
+# Virtual environments
+.venv
+
+# Environment variables
+.env*
+# Logs
+logs/
+
+# Exclude token.json
+token.json
+
+# Excelude Docker Volumes
+data/
+
+# Exclude downloaded files
+docs-main.zip
+docs/
+
+# vscode settings
+.vscode/
+.idea/
+*-workspace
+
+# Rust artifacts and binarys
+*.lock
+target/
+Cargo.lock

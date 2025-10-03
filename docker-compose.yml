@@ -1,0 +1,185 @@
+services:
+  homeassistant:
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    container_name: homeassistant
+    privileged: true
+    volumes:
+      - ./data/homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+    environment:
+      - TZ=America/Los_Angeles
+    ports:
+      - "8123:8123"
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  
+  open-webui:
+    network_mode: "host"
+    image: ghcr.io/open-webui/open-webui:cuda
+    runtime: nvidia
+    container_name: open-webui
+    privileged: true
+    ports:
+      - "3000:8080"
+    env_file: ".env.dev"
+    environment:
+      - WEBUI_URL=http://localhost:3000
+      - GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback
+      - HOST=0.0.0.0
+      #- 'WEBUI_AUTH_TRUSTED_EMAIL_HEADER=X-Forwarded-Email'
+      #- 'WEBUI_AUTH_TRUSTED_NAME_HEADER=X-Forwarded-User'
+      - GLOBAL_LOG_LEVEL=DEBUG
+      - DEBUG=true
+      #- ENABLE_OAUTH_SIGNUP=true
+      - OLLAMA_API_BASE_URL=http://localhost:11434/api
+      - OLLAMA_BASE_URL=http://localhost:11434
+      - API_BASE_URL=http://localhost:11434
+
+    volumes:
+      - ./data/ollama:/root/.ollama
+      - open-webui:/app/backend/data
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "gizmatron.local:192.168.50.72"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  #oauth2-proxy:
+  #  image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+  #  env_file: ".env.dev"
+  #  environment:
+  #    OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+  #    OAUTH2_PROXY_UPSTREAMS: http://open-webui:8080/
+  #    OAUTH2_PROXY_PROVIDER: google
+      #OAUTH2_PROXY_CLIENT_ID: REPLACEME_OAUTH_CLIENT_ID
+      #OAUTH2_PROXY_CLIENT_SECRET: REPLACEME_OAUTH_CLIENT_ID
+      #OAUTH2_PROXY_EMAIL_DOMAINS: REPLACEME_ALLOWED_EMAIL_DOMAINS
+      #OAUTH2_PROXY_REDIRECT_URL: REPLACEME_OAUTH_CALLBACK_URL
+      #OAUTH2_PROXY_COOKIE_SECRET: REPLACEME_COOKIE_SECRET
+      #OAUTH2_PROXY_COOKIE_SECURE: "false"
+  #  restart: unless-stopped
+  #  ports:
+  #    - 4180:4180/tcp
+  
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    user: root
+    container_name: n8n
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=development
+      - WEBHOOK_URL=http://localhost:5678/
+      - OLLAMA_API_BASE_URL=http://host.docker.internal:11434
+    ports:
+      - "5678:5678"
+    volumes:
+      - ./data/n8n:/home/node/n8n
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: mcp-server
+    command: ["/app/mcp-server", "--port", "3002"]
+    env_file: ".env.dev"
+    environment:
+      - RUST_LOG=mcp_server=debug,actix_web=debug,neo4j_driver=debug,mcp_server::plugins::system_info=debug,mcp_server::context::neo4j=debug
+      - HOMEASSISTANT_URL=http://localhost:8123
+      - HOMEASSISTANT_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI4ZjM1MTJlNzJlN2M0NzkwYjU1MmJjNzczYTY4OWU1OSIsImlhdCI6MTc1OTMzMjk4NCwiZXhwIjoyMDc0NjkyOTg0fQ.Dp-WJTFQe1dCAecr091y4qJmvLKLESUItDz1G6ToIQU
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=a08071985
+      - NEO4J_DATABASE=neo4j
+    networks:
+      - mcp-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data/mcp-server:/app/data
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "gizmatron.local:192.168.50.72"
+
+  mcp-http-bridge:
+    build:
+      context: ./mcp-http-bridge
+      dockerfile: Dockerfile
+    container_name: mcp-http-bridge
+    command: ["./mcp-http-bridge", "--mcp-server-path", "http://mcp-server:3002"]
+    environment:
+      - RUST_LOG=debug,mcp_http_bridge=debug,actix_web=debug
+    networks:
+      - mcp-network
+    ports:
+      - "3001:3001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    depends_on:
+      - mcp-server
+
+  neo4j:
+    image: neo4j:5.13.0
+    container_name: neo4j
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    environment:
+      - NEO4J_AUTH=neo4j/a08071985
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+      - NEO4J_dbms_memory_pagecache_size=512M
+      - NEO4J_dbms.memory.heap.initial_size=512M
+      - NEO4J_dbms_memory_heap_max__size=1G
+      - NEO4J_dbms_default__listen__address=0.0.0.0
+      - NEO4J_dbms_connector_bolt_listen__address=0.0.0.0:7687
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      #- NEO4J_dbms_security_procedures_unrestricted=apoc.*,algo.*
+      - NEO4J_server_logs_debug_enabled=true
+      #- NEO4J_dbms_security_auth__rate__limit_max__concurrent__attempts=1000
+      #- NEO4J_PLUGINS=["apoc"]
+    networks:
+      - mcp-network
+    volumes:
+      - ./data/neo4j/data:/data
+      - ./data/neo4j/logs:/logs
+      - ./data/neo4j/import:/import
+      - ./data/neo4j/plugins:/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+
+networks:
+  mcp-network:
+    name: mcp-network
+    driver: bridge
+
+volumes:
+  ollama:
+  open-webui:
+  neo4j_data:
+  neo4j_logs:
