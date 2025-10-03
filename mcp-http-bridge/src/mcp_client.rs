@@ -65,49 +65,83 @@ impl McpClient {
         debug!("Executing MCP command: {} to {}", request.method, self.mcp_server_path);
         
         let client = reqwest::Client::new();
-        let url = match request.method.as_str() {
-            "tools/list" => format!("{}/tools/list", &self.mcp_server_path),
-            "tools/call" => format!("{}/tools/call", &self.mcp_server_path),
-            _ => return Err(anyhow!("Unknown method: {}", request.method)),
+        let base_url = self.mcp_server_path.trim_end_matches('/').to_string();
+        let url = if request.method == "tools/list" {
+            format!("{}/tools/list", base_url)
+        } else {
+            format!("{}/tools/call", base_url)
         };
         debug!("Making request to {}", url);
+
+        // Create proper JSON-RPC envelope
+        let json_rpc = if request.method == "tools/list" {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": request.id,
+                "method": request.method
+            })
+        } else {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": request.id,
+                "method": request.method,
+                "params": request.params
+            })
+        };
         
-        let response = match request.method.as_str() {
-            "tools/list" => client.get(&url).send().await?,
-            "tools/call" => client.post(&url).json(&request.params).send().await?,
-            _ => return Err(anyhow!("Unknown method: {}", request.method)),
+        debug!("Sending JSON-RPC request: {}", json_rpc);
+        
+        let response = if request.method == "tools/list" {
+            client.get(&url)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .send()
+                .await?
+        } else {
+            client.post(&url)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .json(&json_rpc)
+                .send()
+                .await?
         };
             
         let status = response.status();
-        if !status.is_success() {
-            let error_text = response.text().await?;
-            error!("MCP server returned error status: {} with body: {}", status, error_text);
-            return Err(anyhow!(
-                "MCP server returned error status: {} with body: {}",
-                status,
-                error_text
-            ));
-        }
+        debug!("Response status: {}", status);
+        debug!("Response headers: {:?}", response.headers());
         
         let response_text = response.text().await?;
-        debug!("Received response: {}", response_text);
+        debug!("Raw response from MCP server: {}", response_text);
         
-        // Parse the raw response into a Value first
-        let response_value: serde_json::Value = serde_json::from_str(&response_text)?;
+        if !status.is_success() {
+            error!("MCP server returned error status: {} with body: {}", status, response_text);
+            return Err(anyhow!("MCP server error: {} - {}", status, response_text));
+        }
         
-        // Convert the response into our expected JsonRpcResponse format
-        let jsonrpc_response = JsonRpcResponse {
-            jsonrpc: "2.0".to_string(),
-            id: request.id,
-            result: Some(response_value),
-            error: None,
-        };
-        
-        Ok(jsonrpc_response)
+        // For tools/list, try to parse the raw response first
+        if request.method == "tools/list" {
+            if let Ok(tools_response) = serde_json::from_str::<serde_json::Value>(&response_text) {
+                debug!("Got raw tools response: {}", tools_response);
+                if let Some(tools) = tools_response.get("tools") {
+                    return Ok(JsonRpcResponse {
+                        jsonrpc: "2.0".to_string(),
+                        id: request.id,
+                        result: Some(tools.clone()),
+                        error: None,
+                    });
+                }
+            }
+        }
+
+        // Try to parse as JSON-RPC response
+        serde_json::from_str(&response_text)
+            .map_err(|e| {
+                error!("Failed to parse JSON-RPC response: {} - Response text: {}", e, response_text);
+                anyhow!("JSON-RPC parse error: {} - Response: {}", e, response_text)
+            })
     }
 
     pub async fn initialize(&self) -> Result<()> {
-        // Verify the server is up by fetching tools list
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
             id: self.get_next_id().await,
@@ -150,13 +184,6 @@ impl McpClient {
                 if let Ok(tools) = serde_json::from_value::<Vec<ToolDefinition>>(tools_obj.clone()) {
                     return Ok(tools);
                 }
-                
-                // If tools is another object with a tools field
-                if let Some(nested_tools) = tools_obj.as_object().and_then(|obj| obj.get("tools")) {
-                    if let Ok(tools) = serde_json::from_value::<Vec<ToolDefinition>>(nested_tools.clone()) {
-                        return Ok(tools);
-                    }
-                }
             }
             
             error!("Failed to parse tools list response: {}", result);
@@ -182,13 +209,38 @@ impl McpClient {
         let response = self.execute_mcp_command(request).await?;
         
         if let Some(result) = response.result {
-            let call_result: serde_json::Map<String, Value> = serde_json::from_value(result)?;
-            if let Some(content_array) = call_result.get("content") {
-                let content: Vec<ContentBlock> = serde_json::from_value(content_array.clone())?;
-                return Ok(content);
+            debug!("Got result from MCP server: {:?}", result);
+            
+            // Try to parse from the result.content field
+            if let Some(content_obj) = result.as_object().and_then(|obj| obj.get("content")) {
+                match serde_json::from_value::<Vec<ContentBlock>>(content_obj.clone()) {
+                    Ok(content) => {
+                        debug!("Successfully parsed content blocks: {:?}", content);
+                        return Ok(content);
+                    }
+                    Err(e) => {
+                        error!("Failed to parse content blocks: {}", e);
+                        error!("Raw result was: {:?}", result);
+                        return Err(anyhow!("Invalid tools/call response format: {}", e));
+                    }
+                }
+            }
+            
+            // Try to parse directly if no content field
+            match serde_json::from_value::<Vec<ContentBlock>>(result.clone()) {
+                Ok(content) => {
+                    debug!("Successfully parsed content blocks directly: {:?}", content);
+                    return Ok(content);
+                }
+                Err(e) => {
+                    error!("Failed to parse content blocks directly: {}", e);
+                    error!("Raw result was: {:?}", result);
+                    return Err(anyhow!("Invalid tools/call response format: {}", e));
+                }
             }
         }
         
-        Err(anyhow!("Invalid tools/call response format"))
+        error!("No result field in response");
+        Err(anyhow!("Invalid tools/call response format: no result field"))
     }
 }

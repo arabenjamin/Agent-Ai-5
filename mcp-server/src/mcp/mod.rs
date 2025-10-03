@@ -132,11 +132,12 @@ impl McpServer {
         let result = plugin.execute(capability, context, mapped_args).await
             .map_err(|e| anyhow::anyhow!("Plugin execution failed: {}", e))?;
 
-        // Convert plugin result to ContentBlock
-        let text = serde_json::to_string_pretty(&result.data)
+        // Convert plugin result to ContentBlock with proper formatting
+        let result_text = serde_json::to_string_pretty(&result.data)
             .map_err(|e| anyhow::anyhow!("Failed to serialize plugin result: {}", e))?;
             
-        Ok(vec![ContentBlock::text(&text)])
+        let content_block = ContentBlock::text(&result_text);
+        Ok(vec![content_block])
     }
 
     async fn handle_plugins_list(&self, request: &JsonRpcRequest) -> String {
