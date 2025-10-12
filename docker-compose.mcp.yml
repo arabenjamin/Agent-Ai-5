@@ -1,0 +1,63 @@
+services:
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: mcp-server
+    command: ["/app/mcp-server", "--port", "3002"]
+    environment:
+      - RUST_LOG=info
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=password
+      - HOME_ASSISTANT_URL=http://homeassistant:8123
+      - HOME_ASSISTANT_TOKEN_FILE=/app/data/token.json
+      - PLUGIN_DIR=/app/plugins
+      - CONTEXT_DB=/app/data/context.db
+      - RULES_FILE=/app/data/rules.yaml
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./data/mcp-server:/app/data
+      - ./token.json:/app/data/token.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    depends_on:
+      - neo4j
+
+  mcp-http-bridge:
+    build:
+      context: ./mcp-http-bridge
+      dockerfile: Dockerfile
+    container_name: mcp-http-bridge
+    command: ["./mcp-http-bridge", "--mcp-server-path", "http://mcp-server:3002"]
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    depends_on:
+      - mcp-server
+
+  neo4j:
+    image: neo4j:5.15
+    container_name: neo4j
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - ./data/neo4j/data:/data
+      - ./data/neo4j/logs:/logs
+      - ./data/neo4j/import:/var/lib/neo4j/import
+      - ./data/neo4j/plugins:/plugins
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+networks:
+  mcp-network:
+    external: true

@@ -265,3 +265,204 @@ impl Plugin for SystemInfoPlugin {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::collections::HashMap;
+    use chrono::Utc;
+
+    #[test]
+    fn test_system_plugin_error_display() {
+        let error = SystemPluginError("Test error message".to_string());
+        assert_eq!(format!("{}", error), "Test error message");
+    }
+
+    #[test]
+    fn test_system_plugin_error_debug() {
+        let error = SystemPluginError("Debug test".to_string());
+        let debug_str = format!("{:?}", error);
+        assert!(debug_str.contains("Debug test"));
+    }
+
+    #[test]
+    fn test_system_info_plugin_creation() {
+        let plugin = SystemInfoPlugin::new();
+        assert_eq!(plugin.name(), "system_info");
+        assert_eq!(plugin.version(), "0.1.0");
+    }
+
+    #[test]
+    fn test_system_info_plugin_capabilities() {
+        let plugin = SystemInfoPlugin::new();
+        let capabilities = plugin.capabilities();
+        
+        assert_eq!(capabilities.len(), 2);
+        
+        // Check get_system_info capability
+        let get_info_cap = capabilities.iter()
+            .find(|c| c.name == "get_system_info")
+            .expect("get_system_info capability should exist");
+        
+        assert_eq!(get_info_cap.description, "Get current system information including CPU, memory, and OS details");
+        assert_eq!(get_info_cap.parameters.len(), 0);
+        
+        // Check get_memory_usage capability
+        let memory_cap = capabilities.iter()
+            .find(|c| c.name == "get_memory_usage")
+            .expect("get_memory_usage capability should exist");
+        
+        assert_eq!(memory_cap.description, "Get current memory usage information");
+        assert_eq!(memory_cap.parameters.len(), 1);
+        assert_eq!(memory_cap.parameters[0].name, "include_details");
+        assert_eq!(memory_cap.parameters[0].description, "Whether to include detailed memory statistics");
+        assert!(matches!(memory_cap.parameters[0].parameter_type, ParameterType::Boolean));
+        assert!(!memory_cap.parameters[0].required);
+    }
+
+    #[tokio::test]
+    async fn test_get_system_info() {
+        let plugin = SystemInfoPlugin::new();
+        let info = plugin.get_system_info().await;
+        
+        // Verify basic system info fields are present based on actual implementation
+        assert!(info.contains_key("cpu_usage"));
+        assert!(info.contains_key("total_memory_kb"));
+        assert!(info.contains_key("used_memory_kb"));
+        assert!(info.contains_key("memory_usage_percent"));
+        
+        // Verify data types
+        assert!(info["cpu_usage"].is_number());
+        assert!(info["total_memory_kb"].is_number());
+        assert!(info["used_memory_kb"].is_number());
+        assert!(info["memory_usage_percent"].is_number());
+        
+        // Verify reasonable values
+        let total_memory = info["total_memory_kb"].as_u64().unwrap();
+        assert!(total_memory > 0);
+        
+        let used_memory = info["used_memory_kb"].as_u64().unwrap();
+        assert!(used_memory > 0);
+        assert!(used_memory <= total_memory);
+        
+        let memory_usage = info["memory_usage_percent"].as_f64().unwrap();
+        assert!(memory_usage >= 0.0 && memory_usage <= 100.0);
+        
+        let cpu_usage = info["cpu_usage"].as_f64().unwrap();
+        assert!(cpu_usage >= 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_plugin_trait_implementation() {
+        let plugin = SystemInfoPlugin::new();
+        
+        // Test name and version
+        assert_eq!(plugin.name(), "system_info");
+        assert_eq!(plugin.version(), "0.1.0");
+        
+        // Test capabilities returns expected structure
+        let capabilities = plugin.capabilities();
+        assert!(!capabilities.is_empty());
+        
+        for capability in &capabilities {
+            assert!(!capability.name.is_empty());
+            assert!(!capability.description.is_empty());
+            // Parameters can be empty for some capabilities
+        }
+    }
+
+    #[tokio::test]
+    async fn test_initialize_and_shutdown() {
+        let plugin = SystemInfoPlugin::new();
+        
+        // Test initialization
+        let init_result = plugin.initialize().await;
+        assert!(init_result.is_ok());
+        
+        // Test shutdown
+        let shutdown_result = plugin.shutdown().await;
+        assert!(shutdown_result.is_ok());
+    }
+
+    // Note: The following tests would require a Neo4j test database
+    // For now, we'll test the structure and error handling without actual execution
+    
+    #[tokio::test]
+    async fn test_unsupported_capability() {
+        let plugin = SystemInfoPlugin::new();
+        let context = Context {
+            correlation_id: "test-123".to_string(),
+            timestamp: Utc::now(),
+            parameters: HashMap::new(),
+        };
+        
+        let result = plugin.execute(
+            "unsupported_capability",
+            context,
+            HashMap::new(),
+        ).await;
+        
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Unsupported capability"));
+    }
+
+    #[test]
+    fn test_parameter_types() {
+        let plugin = SystemInfoPlugin::new();
+        let capabilities = plugin.capabilities();
+        
+        for capability in capabilities {
+            for param in capability.parameters {
+                // Verify parameter types are valid enums
+                match param.parameter_type {
+                    ParameterType::String |
+                    ParameterType::Number |
+                    ParameterType::Boolean |
+                    ParameterType::Object |
+                    ParameterType::Array => {
+                        // All valid types
+                    }
+                }
+                
+                // Verify parameter names and descriptions are non-empty
+                assert!(!param.name.is_empty());
+                assert!(!param.description.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn test_system_plugin_error_trait_implementations() {
+        let error = SystemPluginError("test".to_string());
+        
+        // Test Error trait
+        let error_trait: &dyn Error = &error;
+        assert_eq!(error_trait.to_string(), "test");
+        
+        // Test Display trait
+        assert_eq!(format!("{}", error), "test");
+        
+        // Test Debug trait  
+        let debug_str = format!("{:?}", error);
+        assert!(debug_str.contains("test"));
+    }
+
+    #[test]
+    fn test_context_structure() {
+        let context = Context {
+            correlation_id: "test-correlation-id".to_string(),
+            timestamp: Utc::now(),
+            parameters: {
+                let mut params = HashMap::new();
+                params.insert("test_param".to_string(), json!("test_value"));
+                params
+            },
+        };
+        
+        assert_eq!(context.correlation_id, "test-correlation-id");
+        assert!(context.parameters.contains_key("test_param"));
+        assert_eq!(context.parameters.get("test_param"), Some(&json!("test_value")));
+    }
+}

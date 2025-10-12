@@ -140,6 +140,7 @@ Common issues and solutions:
    - Secure sensitive integrations
 
 4. Feature Development
+   - Plugin architecture for tools
    - Expand context processing
    - Implement rule engine
    - Add more tool capabilities

@@ -43,6 +43,14 @@ pub struct Neo4jContext {
     graph: Graph,
 }
 
+impl std::fmt::Debug for Neo4jContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Neo4jContext")
+            .field("graph", &"<Neo4j Graph>")
+            .finish()
+    }
+}
+
 impl Neo4jContext {
     pub async fn connect(url: String, user: String, password: String) -> Result<Neo4jContext, Box<dyn Error + Send + Sync>> {
         info!("Attempting to connect to Neo4j at {}", url);
@@ -389,5 +397,271 @@ pub async fn get_neo4j_context() -> Result<Arc<Neo4jContext>, Box<dyn Error + Se
         let graph = client.as_ref().unwrap().clone();
         debug!("Creating Neo4jContext from existing connection");
         Ok(Arc::new(Neo4jContext { graph }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{DateTime, Utc};
+    use std::collections::HashMap;
+    use serde_json::json;
+
+    // Helper function to create test timestamp
+    fn test_timestamp() -> DateTime<Utc> {
+        Utc::now()
+    }
+
+    #[test]
+    fn test_context_node_type_serialization() {
+        let node_types = vec![
+            ContextNodeType::Metric,
+            ContextNodeType::SystemState,
+            ContextNodeType::UserInteraction,
+            ContextNodeType::ToolExecution,
+            ContextNodeType::Pattern,
+        ];
+
+        for node_type in node_types {
+            let serialized = serde_json::to_string(&node_type).unwrap();
+            let deserialized: ContextNodeType = serde_json::from_str(&serialized).unwrap();
+            
+            // Check that we can round-trip serialize/deserialize
+            match (&node_type, &deserialized) {
+                (ContextNodeType::Metric, ContextNodeType::Metric) => (),
+                (ContextNodeType::SystemState, ContextNodeType::SystemState) => (),
+                (ContextNodeType::UserInteraction, ContextNodeType::UserInteraction) => (),
+                (ContextNodeType::ToolExecution, ContextNodeType::ToolExecution) => (),
+                (ContextNodeType::Pattern, ContextNodeType::Pattern) => (),
+                _ => panic!("Serialization round-trip failed for {:?}", node_type),
+            }
+        }
+    }
+
+    #[test]
+    fn test_relation_type_serialization() {
+        let relation_types = vec![
+            RelationType::Followed,
+            RelationType::Caused,
+            RelationType::Related,
+            RelationType::Contains,
+            RelationType::Triggered,
+        ];
+
+        for relation_type in relation_types {
+            let serialized = serde_json::to_string(&relation_type).unwrap();
+            let deserialized: RelationType = serde_json::from_str(&serialized).unwrap();
+            
+            // Check that we can round-trip serialize/deserialize
+            match (&relation_type, &deserialized) {
+                (RelationType::Followed, RelationType::Followed) => (),
+                (RelationType::Caused, RelationType::Caused) => (),
+                (RelationType::Related, RelationType::Related) => (),
+                (RelationType::Contains, RelationType::Contains) => (),
+                (RelationType::Triggered, RelationType::Triggered) => (),
+                _ => panic!("Serialization round-trip failed for {:?}", relation_type),
+            }
+        }
+    }
+
+    #[test]
+    fn test_context_node_creation() {
+        let timestamp = test_timestamp();
+        let mut properties = HashMap::new();
+        properties.insert("key1".to_string(), json!("value1"));
+        properties.insert("key2".to_string(), json!(42));
+        properties.insert("key3".to_string(), json!(true));
+
+        let node = ContextNode {
+            node_type: ContextNodeType::Metric,
+            timestamp,
+            properties: properties.clone(),
+        };
+
+        assert!(matches!(node.node_type, ContextNodeType::Metric));
+        assert_eq!(node.timestamp, timestamp);
+        assert_eq!(node.properties.len(), 3);
+        assert_eq!(node.properties.get("key1"), Some(&json!("value1")));
+        assert_eq!(node.properties.get("key2"), Some(&json!(42)));
+        assert_eq!(node.properties.get("key3"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn test_context_node_serialization() {
+        let timestamp = test_timestamp();
+        let mut properties = HashMap::new();
+        properties.insert("metric_name".to_string(), json!("cpu_usage"));
+        properties.insert("value".to_string(), json!(75.5));
+
+        let node = ContextNode {
+            node_type: ContextNodeType::Metric,
+            timestamp,
+            properties,
+        };
+
+        let serialized = serde_json::to_string(&node).unwrap();
+        let deserialized: ContextNode = serde_json::from_str(&serialized).unwrap();
+
+        assert!(matches!(deserialized.node_type, ContextNodeType::Metric));
+        assert_eq!(deserialized.timestamp, timestamp);
+        assert_eq!(deserialized.properties.len(), 2);
+        assert_eq!(deserialized.properties.get("metric_name"), Some(&json!("cpu_usage")));
+        assert_eq!(deserialized.properties.get("value"), Some(&json!(75.5)));
+    }
+
+    #[test]
+    fn test_context_node_with_complex_properties() {
+        let timestamp = test_timestamp();
+        let mut properties = HashMap::new();
+        
+        // Add complex nested JSON
+        properties.insert("config".to_string(), json!({
+            "nested": {
+                "array": [1, 2, 3],
+                "object": {
+                    "key": "value"
+                }
+            }
+        }));
+        
+        // Add null value
+        properties.insert("optional_field".to_string(), json!(null));
+        
+        // Add array
+        properties.insert("tags".to_string(), json!(["tag1", "tag2", "tag3"]));
+
+        let node = ContextNode {
+            node_type: ContextNodeType::SystemState,
+            timestamp,
+            properties,
+        };
+
+        let serialized = serde_json::to_string(&node).unwrap();
+        let deserialized: ContextNode = serde_json::from_str(&serialized).unwrap();
+
+        assert!(matches!(deserialized.node_type, ContextNodeType::SystemState));
+        assert_eq!(deserialized.properties.len(), 3);
+        
+        // Verify complex nested structure
+        let config = deserialized.properties.get("config").unwrap();
+        assert_eq!(config["nested"]["array"], json!([1, 2, 3]));
+        assert_eq!(config["nested"]["object"]["key"], json!("value"));
+        
+        // Verify null value
+        assert_eq!(deserialized.properties.get("optional_field"), Some(&json!(null)));
+        
+        // Verify array
+        assert_eq!(deserialized.properties.get("tags"), Some(&json!(["tag1", "tag2", "tag3"])));
+    }
+
+    #[test] 
+    fn test_context_node_types_debug() {
+        let types = [
+            ContextNodeType::Metric,
+            ContextNodeType::SystemState,
+            ContextNodeType::UserInteraction,
+            ContextNodeType::ToolExecution,
+            ContextNodeType::Pattern,
+        ];
+
+        for node_type in types {
+            let debug_str = format!("{:?}", node_type);
+            assert!(!debug_str.is_empty());
+            
+            // Each debug string should contain the variant name
+            match node_type {
+                ContextNodeType::Metric => assert!(debug_str.contains("Metric")),
+                ContextNodeType::SystemState => assert!(debug_str.contains("SystemState")),
+                ContextNodeType::UserInteraction => assert!(debug_str.contains("UserInteraction")),
+                ContextNodeType::ToolExecution => assert!(debug_str.contains("ToolExecution")),
+                ContextNodeType::Pattern => assert!(debug_str.contains("Pattern")),
+            }
+        }
+    }
+
+    #[test]
+    fn test_relation_types_debug() {
+        let types = [
+            RelationType::Followed,
+            RelationType::Caused,
+            RelationType::Related,
+            RelationType::Contains,
+            RelationType::Triggered,
+        ];
+
+        for relation_type in types {
+            let debug_str = format!("{:?}", relation_type);
+            assert!(!debug_str.is_empty());
+            
+            // Each debug string should contain the variant name
+            match relation_type {
+                RelationType::Followed => assert!(debug_str.contains("Followed")),
+                RelationType::Caused => assert!(debug_str.contains("Caused")),
+                RelationType::Related => assert!(debug_str.contains("Related")),
+                RelationType::Contains => assert!(debug_str.contains("Contains")),
+                RelationType::Triggered => assert!(debug_str.contains("Triggered")),
+            }
+        }
+    }
+
+    #[test]
+    fn test_context_node_clone() {
+        let timestamp = test_timestamp();
+        let mut properties = HashMap::new();
+        properties.insert("test_key".to_string(), json!("test_value"));
+
+        let original = ContextNode {
+            node_type: ContextNodeType::UserInteraction,
+            timestamp,
+            properties,
+        };
+
+        let cloned = original.clone();
+
+        // Verify clone is identical but separate
+        assert!(matches!(cloned.node_type, ContextNodeType::UserInteraction));
+        assert_eq!(cloned.timestamp, original.timestamp);
+        assert_eq!(cloned.properties.len(), original.properties.len());
+        assert_eq!(cloned.properties.get("test_key"), original.properties.get("test_key"));
+    }
+
+    #[test]
+    fn test_empty_properties() {
+        let timestamp = test_timestamp();
+        let properties = HashMap::new();
+
+        let node = ContextNode {
+            node_type: ContextNodeType::Pattern,
+            timestamp,
+            properties,
+        };
+
+        assert!(matches!(node.node_type, ContextNodeType::Pattern));
+        assert_eq!(node.properties.len(), 0);
+        
+        // Should still serialize/deserialize properly
+        let serialized = serde_json::to_string(&node).unwrap();
+        let deserialized: ContextNode = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.properties.len(), 0);
+    }
+
+    // Integration test helper - these would normally require an actual Neo4j instance
+    // For now, we'll test the structure and error handling
+    
+    #[tokio::test]
+    async fn test_neo4j_context_connection_error_handling() {
+        // This tests the error handling when connection fails
+        // In a real environment, this would need a test database
+        
+        let result = Neo4jContext::connect(
+            "bolt://invalid-host:7687".to_string(),
+            "neo4j".to_string(),
+            "invalid-password".to_string(),
+        ).await;
+        
+        // Should fail with connection error
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(!error_msg.is_empty());
     }
 }

@@ -23,7 +23,8 @@ data/
 
 # Exclude downloaded files
 docs-main.zip
-docs/
+docs-main/
+
 
 # vscode settings
 .vscode/

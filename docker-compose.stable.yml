@@ -1,0 +1,73 @@
+services:
+  homeassistant:
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    container_name: homeassistant
+    privileged: true
+    volumes:
+      - ./data/homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+    environment:
+      - TZ=America/Los_Angeles
+    ports:
+      - "8123:8123"
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  
+  open-webui:
+    network_mode: "host"
+    image: ghcr.io/open-webui/open-webui:cuda
+    runtime: nvidia
+    container_name: open-webui
+    privileged: true
+    ports:
+      - "3000:8080"
+    env_file: ".env.dev"
+    environment:
+      - WEBUI_URL=http://localhost:3000
+      - GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback
+      - HOST=0.0.0.0
+      - GLOBAL_LOG_LEVEL=DEBUG
+      - DEBUG=true
+      - OLLAMA_API_BASE_URL=http://localhost:11434/api
+      - OLLAMA_BASE_URL=http://localhost:11434
+      - API_BASE_URL=http://localhost:11434
+    volumes:
+      - ./data/ollama:/root/.ollama
+      - open-webui:/app/backend/data
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "gizmatron.local:192.168.50.72"
+
+  n8n:
+    image: n8nio/n8n
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+volumes:
+  open-webui:
+
+networks:
+  mcp-network:
+    external: true

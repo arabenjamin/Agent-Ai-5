@@ -184,3 +184,108 @@ impl Plugin for HttpPlugin {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use chrono::Utc;
+
+    #[test]
+    fn test_http_plugin_error_display() {
+        let error = HttpPluginError("Test error".to_string());
+        assert_eq!(format!("{}", error), "Test error");
+    }
+
+    #[test]
+    fn test_http_plugin_creation() {
+        let plugin = HttpPlugin::new();
+        assert_eq!(plugin.name(), "http");
+        assert_eq!(plugin.version(), "0.1.0");
+    }
+
+    #[test]
+    fn test_http_plugin_capabilities() {
+        let plugin = HttpPlugin::new();
+        let capabilities = plugin.capabilities();
+        
+        assert_eq!(capabilities.len(), 1);
+        
+        let request_cap = &capabilities[0];
+        assert_eq!(request_cap.name, "request");
+        assert_eq!(request_cap.description, "Make an HTTP request to a URL");
+        assert_eq!(request_cap.parameters.len(), 5);
+        
+        // Check required parameters
+        let method_param = request_cap.parameters.iter()
+            .find(|p| p.name == "method")
+            .expect("method parameter should exist");
+        assert!(method_param.required);
+        assert!(matches!(method_param.parameter_type, ParameterType::String));
+        
+        let url_param = request_cap.parameters.iter()
+            .find(|p| p.name == "url")
+            .expect("url parameter should exist");
+        assert!(url_param.required);
+        assert!(matches!(url_param.parameter_type, ParameterType::String));
+        
+        // Check optional parameters
+        let headers_param = request_cap.parameters.iter()
+            .find(|p| p.name == "headers")
+            .expect("headers parameter should exist");
+        assert!(!headers_param.required);
+        assert!(matches!(headers_param.parameter_type, ParameterType::Object));
+    }
+
+    #[tokio::test]
+    async fn test_unsupported_capability() {
+        let plugin = HttpPlugin::new();
+        let context = Context {
+            correlation_id: "test-123".to_string(),
+            timestamp: Utc::now(),
+            parameters: HashMap::new(),
+        };
+        
+        let result = plugin.execute(
+            "unsupported_capability",
+            context,
+            HashMap::new(),
+        ).await;
+        
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Unknown capability"));
+    }
+
+    #[tokio::test]
+    async fn test_initialize_and_shutdown() {
+        let plugin = HttpPlugin::new();
+        
+        // Test initialization
+        let init_result = plugin.initialize().await;
+        assert!(init_result.is_ok());
+        
+        // Test shutdown
+        let shutdown_result = plugin.shutdown().await;
+        assert!(shutdown_result.is_ok());
+    }
+
+    #[test]
+    fn test_http_plugin_error_trait_implementations() {
+        let error = HttpPluginError("test".to_string());
+        
+        // Test Error trait
+        let error_trait: &dyn Error = &error;
+        assert_eq!(error_trait.to_string(), "test");
+        
+        // Test Display trait
+        assert_eq!(format!("{}", error), "test");
+        
+        // Test Debug trait  
+        let debug_str = format!("{:?}", error);
+        assert!(debug_str.contains("test"));
+    }
+
+    // Note: Testing actual HTTP requests would require mock servers
+    // For integration tests, we'd use tools like wiremock
+}
