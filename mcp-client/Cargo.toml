@@ -13,3 +13,11 @@ clap = { version = "4.0", features = ["derive"] }
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+wiremock = "0.5"
+assert-json-diff = "2.0"
+tempfile = "3.8"
+assert_cmd = "2.0"
+predicates = "3.0"

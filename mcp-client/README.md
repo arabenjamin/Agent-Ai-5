@@ -1,241 +1,424 @@
 # MCP Client CLI Tool
 
-A command-line tool for interacting with Ollama LLM models and MCP server. It provides seamless integration between language models and system tools through the Model Context Protocol (MCP).
+A command-line tool for interacting with Ollama LLM models and MCP (Model Context Protocol) servers. It provides seamless integration between language models and system tools, enabling AI assistants to perform complex tasks through tool execution.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+- [Testing](#testing)
+- [Development](#development)
+- [Configuration](#configuration)
+- [Project Structure](#project-structure)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
-- List available MCP tools from the server
-- Call specific MCP tools with JSON arguments
-- List available Ollama models
-- Ask one-off questions to Ollama models
-- Automatic JSON parsing and formatting
-- Detailed error reporting and logging
+- **MCP Integration**: List and call tools from MCP servers
+- **Ollama Support**: Interact with local Ollama language models
+- **Tool-Assisted Chat**: Enable AI models to use system tools intelligently
+- **Direct Queries**: Ask simple questions without tool integration
+- **Robust Error Handling**: Detailed error messages and logging
+- **Flexible Configuration**: Customizable server URLs and logging levels
+- **Comprehensive Testing**: Unit and integration tests for reliability
 
-## Development
+## Installation
+
+### From Source
+
+1. **Install Rust** (if not already installed):
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   source ~/.cargo/env
+   ```
+
+2. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd mcp-client
+   ```
+
+3. **Build the project**:
+   ```bash
+   cargo build --release
+   ```
+
+4. **Install globally** (optional):
+   ```bash
+   cargo install --path .
+   ```
 
 ### Prerequisites
-- Rust 1.70 or later
-- Cargo (Rust's package manager)
-- Running MCP server (default: http://localhost:3001)
-- Running Ollama server (default: http://localhost:11434)
 
-### Building
-```bash
-# Check code formatting
-cargo fmt --check
+- **Rust 1.70+** and Cargo
+- **MCP Server** running (default: http://localhost:3001)
+- **Ollama Server** running (default: http://localhost:11434)
 
-# Run code linting
-cargo clippy
+## Quick Start
 
-# Build in debug mode
-cargo build
+1. **Check available tools**:
+   ```bash
+   mcp-client list-tools
+   ```
 
-# Build optimized release version
-cargo build --release
+2. **List Ollama models**:
+   ```bash
+   mcp-client list-models
+   ```
 
-# Run tests
-cargo test
+3. **Ask a simple question**:
+   ```bash
+   mcp-client ask --model llama2 --prompt "What is the capital of France?"
+   ```
 
-# Run with debug logging
-RUST_LOG=debug cargo run -- --help
-```
-
-### IDE Setup
-The repository includes VS Code configurations in `.vscode/`:
-- `launch.json`: Debug configurations
-- `tasks.json`: Build tasks
+4. **Use tools via chat**:
+   ```bash
+   mcp-client chat --model llama2 --prompt "What's my system's memory usage?"
+   ```
 
 ## Usage
 
 ### Available Commands
 
-1. List MCP Tools
+#### 1. List MCP Tools
 ```bash
-# List all available tools
-cargo run -- list-tools
+# List all available tools from MCP server
+mcp-client list-tools
 
 # With custom MCP server URL
-cargo run -- --mcp-url http://custom:3001 list-tools
+mcp-client --mcp-url http://custom:3001 list-tools
 ```
 
-2. Call a Specific Tool
+#### 2. Call Specific Tool
 ```bash
 # Call a tool with arguments
-cargo run -- call-tool --name system_info --args '{"action": "get_system_info"}'
+mcp-client call-tool --name system_info --args '{"action": "memory"}'
 
-# Call tool with no arguments
-cargo run -- call-tool --name list_tools
+# Call tool without arguments
+mcp-client call-tool --name list_processes
 ```
 
-3. List Ollama Models
+#### 3. List Ollama Models
 ```bash
 # List available models
-cargo run -- list-models
+mcp-client list-models
 
 # With custom Ollama server URL
-cargo run -- --ollama-url http://custom:11434 list-models
+mcp-client --ollama-url http://custom:11434 list-models
 ```
 
-### Interacting with Models
-
-The client provides two distinct ways to interact with Ollama models:
-
-#### Ask Command
-The `ask` command provides direct, simple interaction with an Ollama model:
+#### 4. Ask Command (Simple Queries)
 ```bash
 # Direct question to model
-cargo run -- ask --model llama2 --prompt "What is REST API?"
+mcp-client ask --model llama2 --prompt "Explain REST APIs"
+
+# Code-related queries
+mcp-client ask --model codellama --prompt "How to handle errors in Rust?"
 ```
-Use `ask` when you want:
+
+**Use `ask` when you want**:
 - Quick, simple questions
-- Direct model responses
-- No need for system tools
-- Learning or testing model capabilities
-- Documentation or explanation queries
+- Direct model responses without tools
+- Educational or explanatory content
+- No system interaction required
 
-#### Chat Command
-The `chat` command enables complex interactions with tool integration:
+#### 5. Chat Command (Tool-Assisted)
 ```bash
-# Tool-assisted interaction
-cargo run -- chat --model llama2 --prompt "Check my system's CPU usage"
+# System monitoring
+mcp-client chat --model llama2 --prompt "Check my CPU usage"
 
-# Complex task with tool usage
-cargo run -- chat --model codellama --prompt "Monitor Docker containers and show their status"
+# Complex analysis
+mcp-client chat --model codellama --prompt "Find processes using high memory"
 ```
-Use `chat` when you need:
+
+**Use `chat` when you need**:
 - Access to system tools and information
 - Complex multi-step tasks
 - System monitoring and management
-- Tool-assisted analysis
 - Automated task execution
 
-The chat command:
+The chat command workflow:
 1. Loads available MCP tools
-2. Creates a context-aware system prompt
+2. Creates context-aware system prompts
 3. Interprets model responses for tool usage
-4. Executes tools when requested
-5. Gets model interpretation of tool results
+4. Executes tools when requested by the model
+5. Provides model interpretation of tool results
 
-### Command-Line Arguments
+### Global Options
 
-Every command supports these global options:
+All commands support these options:
 - `--ollama-url`: Ollama server URL (default: http://localhost:11434)
 - `--mcp-url`: MCP server URL (default: http://localhost:3001)
-- `--log-level`: Logging level (default: info)
+- `--log-level`: Logging level - debug, info, warn, error (default: info)
 
 ### Examples
 
-Direct Question (Ask):
+**System Information**:
 ```bash
-# Simple coding question
-cargo run -- ask --model codellama --prompt "Explain how to use Result in Rust"
+# Get memory usage through tools
+mcp-client chat --model llama2 --prompt "What's my current memory usage?"
 
-# General knowledge query
-cargo run -- ask --model llama2 --prompt "What are the SOLID principles?"
+# Direct tool call
+mcp-client call-tool --name system_info --args '{"type": "memory"}'
 ```
 
-Tool Integration (Chat):
+**Development Assistance**:
 ```bash
-# System monitoring
-cargo run -- chat --model llama2 --prompt "Check if any containers are using too much memory"
+# Ask for code explanation
+mcp-client ask --model codellama --prompt "Explain async/await in Rust"
 
-# Complex analysis
-cargo run -- chat --model codellama --prompt "Analyze my system performance and suggest improvements"
+# System analysis
+mcp-client chat --model llama2 --prompt "Check if Docker containers are running efficiently"
 ```
+
+**Tool Discovery**:
+```bash
+# See what tools are available
+mcp-client list-tools
+
+# Ask model about available tools
+mcp-client chat --model llama2 --prompt "What tools do you have available?"
+```
+
+## Testing
+
+The project includes comprehensive test coverage with both unit and integration tests.
+
+### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run only unit tests
+cargo test --lib
+
+# Run only integration tests
+cargo test --test integration_tests
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Run specific test
+cargo test test_list_tools_success
+```
+
+### Test Coverage
+
+- **Unit Tests** (37 tests): Test individual modules (mcp.rs, ollama.rs)
+  - MCP client: tool listing, calling, error handling
+  - Ollama client: model listing, text generation, streaming
+  - Serialization/deserialization of data structures
+
+- **Integration Tests** (17 tests): Test CLI functionality end-to-end
+  - Command parsing and validation
+  - Error handling and logging
+  - Mock server interactions
+  - Tool execution workflows
+
+### Test Architecture
+
+Tests use `wiremock` for HTTP mocking and `assert_cmd` for CLI testing:
+```bash
+# Example: Run integration tests with detailed output
+RUST_LOG=debug cargo test --test integration_tests -- --nocapture
+```
+
+## Development
+
+### Building
+
+```bash
+# Development build
+cargo build
+
+# Release build (optimized)
+cargo build --release
+
+# Check code formatting
+cargo fmt --check
+
+# Run linting
+cargo clippy
+
+# Fix formatting
+cargo fmt
+```
+
+### Development Environment
+
+The project includes VS Code configuration:
+- `.vscode/launch.json`: Debug configurations
+- `.vscode/tasks.json`: Build and test tasks
+
+### Adding Features
+
+1. **New commands**: Add to `Commands` enum in `main.rs`
+2. **New clients**: Create modules following `mcp.rs`/`ollama.rs` patterns
+3. **Tests**: Add unit tests in module and integration tests in `tests/`
+
+### Debugging
+
+```bash
+# Enable debug logging
+RUST_LOG=debug cargo run -- list-tools
+
+# Use VS Code debugger with launch.json configurations
+# Or attach to running process for debugging
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Set custom log level
+export RUST_LOG=debug
+
+# Custom server URLs can be set via CLI args
+mcp-client --mcp-url http://192.168.1.100:3001 --ollama-url http://192.168.1.100:11434 list-tools
+```
+
+### Server Requirements
+
+**MCP Server**:
+- Must implement standard MCP endpoints:
+  - `GET /tools` - List available tools
+  - `POST /tools/call` - Execute tools
+- Response format must match MCP specification
+
+**Ollama Server**:
+- Standard Ollama API endpoints:
+  - `GET /api/tags` - List models
+  - `POST /api/generate` - Generate text
+- Streaming responses supported
 
 ## Project Structure
 
 ```
 mcp-client/
 ├── src/
-│   ├── main.rs      # CLI interface and command handling
-│   ├── mcp.rs       # MCP client implementation
-│   └── ollama.rs    # Ollama API client
-├── .vscode/         # VS Code configurations
-│   ├── launch.json  # Debug configurations
-│   └── tasks.json   # Build tasks
-└── Cargo.toml       # Project dependencies and metadata
+│   ├── main.rs          # CLI interface, argument parsing, command routing
+│   ├── mcp.rs           # MCP client implementation and data structures
+│   └── ollama.rs        # Ollama API client and streaming support
+├── tests/
+│   └── integration_tests.rs  # End-to-end CLI testing with mocks
+├── .vscode/             # VS Code development configuration
+├── Cargo.toml           # Dependencies and project metadata
+└── README.md           # This file
 ```
+
+### Key Components
+
+- **CLI Interface** (`main.rs`): Command parsing, routing, and user interaction
+- **MCP Client** (`mcp.rs`): HTTP client for MCP server communication
+- **Ollama Client** (`ollama.rs`): HTTP client with streaming support for Ollama
+- **Integration Tests**: Comprehensive CLI testing with mock servers
 
 ## Error Handling
 
-The client provides detailed error messages for common issues:
+The client provides detailed error reporting:
 
-1. Connection Errors
-   - Check if MCP server is running and accessible
-   - Verify Ollama server is running and responding
-   - Check network connectivity and URLs
+### Common Issues
 
-2. Tool Execution Errors
-   - Validate JSON argument format
-   - Ensure tool exists and is available
-   - Check tool-specific requirements (e.g., Docker for container operations)
+1. **Connection Errors**:
+   ```
+   Failed to list tools: Connection refused
+   → Check if MCP server is running on http://localhost:3001
+   ```
 
-3. Model Errors
-   - Verify model is downloaded and available
-   - Check model compatibility with query
-   - Monitor resource usage during model execution
+2. **Tool Execution Errors**:
+   ```
+   Failed to call tool: Invalid JSON arguments
+   → Verify JSON format: {"key": "value"}
+   ```
+
+3. **Model Errors**:
+   ```
+   Failed to generate response: Model not found
+   → Check available models with: mcp-client list-models
+   ```
+
+### Debugging Tips
+
+1. **Enable debug logging**:
+   ```bash
+   mcp-client --log-level debug list-tools
+   ```
+
+2. **Check server connectivity**:
+   ```bash
+   curl http://localhost:3001/tools    # MCP server
+   curl http://localhost:11434/api/tags  # Ollama server
+   ```
+
+3. **Validate JSON arguments**:
+   ```bash
+   echo '{"key": "value"}' | jq .  # Validate JSON
+   ```
+
+## Dependencies
+
+### Core Dependencies
+- **tokio**: Async runtime for concurrent operations
+- **reqwest**: HTTP client with JSON support
+- **serde**: JSON serialization/deserialization
+- **clap**: Command-line argument parsing
+- **anyhow**: Error handling and context
+- **tracing**: Structured logging and diagnostics
+- **futures-util**: Stream processing utilities
+
+### Development Dependencies
+- **wiremock**: HTTP mocking for tests
+- **assert_cmd**: CLI testing framework
+- **predicates**: Test assertions
+- **assert-json-diff**: JSON comparison in tests
+- **tokio-test**: Async testing utilities
 
 ## Contributing
 
-1. Fork and clone the repository
-2. Create a new branch for your feature
-3. Run tests and formatting:
+Contributions are welcome! Please follow these guidelines:
+
+### Development Workflow
+
+1. **Fork and clone**:
+   ```bash
+   git fork <repository-url>
+   git clone <your-fork-url>
+   cd mcp-client
+   ```
+
+2. **Create feature branch**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+3. **Develop and test**:
    ```bash
    cargo fmt
    cargo clippy
    cargo test
    ```
-4. Submit a pull request
+
+4. **Submit pull request** with:
+   - Clear description of changes
+   - Test coverage for new features
+   - Updated documentation if needed
+
+### Code Standards
+
+- Follow Rust conventions and `cargo fmt` formatting
+- Add tests for new functionality
+- Update documentation for API changes
+- Use descriptive commit messages
 
 ## License
 
-This project is licensed under the MIT License.
-```bash
-cargo build --release
-```
+This project is licensed under the MIT License. See LICENSE file for details.
 
-The binary will be available at `target/release/mcp-client`.
+---
 
-## Examples
-
-1. Get system information:
-```bash
-mcp-client chat --model llama3 --prompt "What's my CPU usage?"
-```
-
-2. List and use available tools:
-```bash
-# First list available tools
-mcp-client list-tools
-
-# Then use a tool through chat
-mcp-client chat --model llama3 --prompt "Can you use the system_info tool to check my memory usage?"
-```
-
-3. Direct tool usage:
-```bash
-mcp-client call-tool --name system_info --args '{"info_type": "memory"}'
-```
-
-## Error Handling
-
-The client provides detailed error messages for common issues:
-- Connection errors to Ollama/MCP servers
-- Invalid JSON in tool arguments
-- Tool execution failures
-- Permission issues (e.g., Docker access)
-
-## Dependencies
-
-- tokio - Async runtime
-- reqwest - HTTP client
-- serde - JSON serialization
-- clap - Command-line argument parsing
-- tracing - Logging and diagnostics
-- futures-util - Async utilities
-- anyhow - Error handling
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit pull requests.
+For questions or issues, please open a GitHub issue or submit a pull request.
