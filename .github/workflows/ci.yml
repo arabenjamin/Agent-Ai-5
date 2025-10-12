@@ -1,0 +1,287 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable, beta]
+        project: [mcp-client, mcp-http-bridge, mcp-server]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt, clippy
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-${{ matrix.project }}-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-build-${{ matrix.project }}-${{ matrix.rust }}-
+          ${{ runner.os }}-cargo-build-${{ matrix.project }}-
+
+    - name: Check formatting
+      run: cargo fmt --check
+      working-directory: ${{ matrix.project }}
+
+    - name: Run clippy
+      run: cargo clippy -- -D warnings
+      working-directory: ${{ matrix.project }}
+
+    - name: Run tests
+      run: cargo test --verbose
+      working-directory: ${{ matrix.project }}
+
+    - name: Run tests (release mode)
+      run: cargo test --release --verbose
+      working-directory: ${{ matrix.project }}
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+
+    - name: Run security audit (mcp-client)
+      run: cargo audit
+      working-directory: mcp-client
+
+    - name: Run security audit (mcp-http-bridge)
+      run: cargo audit
+      working-directory: mcp-http-bridge
+
+    - name: Run security audit (mcp-server)
+      run: cargo audit
+      working-directory: mcp-server
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: llvm-tools-preview
+
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@cargo-llvm-cov
+
+    - name: Generate coverage (mcp-client)
+      run: cargo llvm-cov --workspace --lcov --output-path lcov-mcp-client.info
+      working-directory: mcp-client
+
+    - name: Generate coverage (mcp-http-bridge)
+      run: cargo llvm-cov --workspace --lcov --output-path lcov-mcp-http-bridge.info
+      working-directory: mcp-http-bridge
+
+    - name: Generate coverage (mcp-server)
+      run: cargo llvm-cov --workspace --lcov --output-path lcov-mcp-server.info
+      working-directory: mcp-server
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./mcp-client/lcov-mcp-client.info,./mcp-http-bridge/lcov-mcp-http-bridge.info,./mcp-server/lcov-mcp-server.info
+        fail_ci_if_error: false
+
+  build:
+    name: Build Binaries
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: .exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: ""
+        project: [mcp-client, mcp-http-bridge, mcp-server]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-${{ matrix.project }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build binary
+      run: cargo build --release --target ${{ matrix.target }}
+      working-directory: ${{ matrix.project }}
+
+    - name: Upload binary artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.project }}-${{ matrix.target }}
+        path: ${{ matrix.project }}/target/${{ matrix.target }}/release/${{ matrix.project }}${{ matrix.suffix }}
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [test]
+    strategy:
+      matrix:
+        project: [mcp-http-bridge, mcp-server]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_USERNAME }}/${{ matrix.project }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.project }}
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [test]
+    services:
+      neo4j:
+        image: neo4j:latest
+        env:
+          NEO4J_AUTH: neo4j/password
+        ports:
+          - 7474:7474
+          - 7687:7687
+        options: --health-cmd "cypher-shell -u neo4j -p password 'RETURN 1'" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Set up Docker Compose
+      run: |
+        sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+
+    - name: Start services
+      run: |
+        docker-compose -f docker-compose.stable.yml up -d
+        sleep 30  # Wait for services to start
+
+    - name: Run integration tests
+      run: |
+        cd mcp-client
+        cargo test --test integration_tests --release
+
+    - name: Stop services
+      if: always()
+      run: docker-compose -f docker-compose.stable.yml down
+
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Run benchmarks (mcp-client)
+      run: |
+        if [ -f Cargo.toml ] && grep -q "\[\[bench\]\]" Cargo.toml; then
+          cargo bench
+        else
+          echo "No benchmarks found for mcp-client"
+        fi
+      working-directory: mcp-client
+
+    - name: Run benchmarks (mcp-http-bridge)
+      run: |
+        if [ -f Cargo.toml ] && grep -q "\[\[bench\]\]" Cargo.toml; then
+          cargo bench
+        else
+          echo "No benchmarks found for mcp-http-bridge"
+        fi
+      working-directory: mcp-http-bridge
+
+    - name: Run benchmarks (mcp-server)
+      run: |
+        if [ -f Cargo.toml ] && grep -q "\[\[bench\]\]" Cargo.toml; then
+          cargo bench
+        else
+          echo "No benchmarks found for mcp-server"
+        fi
+      working-directory: mcp-server

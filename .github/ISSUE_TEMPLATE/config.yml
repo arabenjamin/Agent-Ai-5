@@ -1,0 +1,17 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/your-org/ollama-n8n-stack/discussions
+    about: Ask questions, share ideas, and connect with the community
+  - name: 📖 Documentation
+    url: https://github.com/your-org/ollama-n8n-stack/blob/main/README.md
+    about: Read the project documentation and guides
+  - name: 🚀 MCP Server Documentation
+    url: https://github.com/your-org/ollama-n8n-stack/blob/main/mcp-server/README.md
+    about: Specific documentation for the MCP server component
+  - name: 🦀 MCP Client Documentation
+    url: https://github.com/your-org/ollama-n8n-stack/blob/main/mcp-client/README.md
+    about: Documentation for the Rust MCP client
+  - name: 🌉 MCP HTTP Bridge Documentation
+    url: https://github.com/your-org/ollama-n8n-stack/blob/main/mcp-http-bridge/README.md
+    about: Documentation for the HTTP bridge component

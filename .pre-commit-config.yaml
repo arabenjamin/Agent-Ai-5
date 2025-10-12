@@ -1,0 +1,75 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: bash -c 'cd mcp-client && cargo fmt --check'
+        language: system
+        files: ^mcp-client/.*\.rs$
+        pass_filenames: false
+
+      - id: cargo-fmt-bridge
+        name: cargo fmt (mcp-http-bridge)
+        entry: bash -c 'cd mcp-http-bridge && cargo fmt --check'
+        language: system
+        files: ^mcp-http-bridge/.*\.rs$
+        pass_filenames: false
+
+      - id: cargo-fmt-server
+        name: cargo fmt (mcp-server)
+        entry: bash -c 'cd mcp-server && cargo fmt --check'
+        language: system
+        files: ^mcp-server/.*\.rs$
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: bash -c 'cd mcp-client && cargo clippy --all-targets --all-features -- -D warnings'
+        language: system
+        files: ^mcp-client/.*\.rs$
+        pass_filenames: false
+
+      - id: cargo-clippy-bridge
+        name: cargo clippy (mcp-http-bridge)
+        entry: bash -c 'cd mcp-http-bridge && cargo clippy --all-targets --all-features -- -D warnings'
+        language: system
+        files: ^mcp-http-bridge/.*\.rs$
+        pass_filenames: false
+
+      - id: cargo-clippy-server
+        name: cargo clippy (mcp-server)
+        entry: bash -c 'cd mcp-server && cargo clippy --all-targets --all-features -- -D warnings'
+        language: system
+        files: ^mcp-server/.*\.rs$
+        pass_filenames: false
+
+      - id: cargo-test
+        name: cargo test
+        entry: bash -c 'cd mcp-client && cargo test'
+        language: system
+        files: ^mcp-client/.*\.rs$
+        pass_filenames: false
+
+      - id: cargo-test-bridge
+        name: cargo test (mcp-http-bridge)
+        entry: bash -c 'cd mcp-http-bridge && cargo test'
+        language: system
+        files: ^mcp-http-bridge/.*\.rs$
+        pass_filenames: false
+
+      - id: cargo-test-server
+        name: cargo test (mcp-server)
+        entry: bash -c 'cd mcp-server && cargo test'
+        language: system
+        files: ^mcp-server/.*\.rs$
+        pass_filenames: false

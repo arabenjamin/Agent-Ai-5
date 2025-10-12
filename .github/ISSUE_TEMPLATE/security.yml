@@ -1,0 +1,151 @@
+name: 🔒 Security Vulnerability
+description: Report a security vulnerability (privately)
+title: "[SECURITY]: "
+labels: ["security", "triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🚨 Security Vulnerability Report
+        
+        **⚠️ IMPORTANT: Please do not report security vulnerabilities in public issues.**
+        
+        If you believe you have found a security vulnerability, please report it privately by:
+        1. Emailing us at security@example.com (replace with actual security contact)
+        2. Using GitHub's private vulnerability reporting feature
+        3. Contacting the maintainers directly
+        
+        **This form should only be used for non-sensitive security improvements or general security questions.**
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity Level
+      description: How severe do you consider this issue?
+      options:
+        - Low - Minor security improvement
+        - Medium - Potential security issue
+        - High - Serious security vulnerability
+        - Critical - Immediate security threat
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which component is affected?
+      options:
+        - MCP Server
+        - MCP Client
+        - MCP HTTP Bridge
+        - Docker Configuration
+        - CI/CD Pipeline
+        - Documentation
+        - Dependencies
+        - Multiple components
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: vulnerability-type
+    attributes:
+      label: Vulnerability Type
+      description: What type of security issue is this?
+      options:
+        - Authentication/Authorization
+        - Input validation
+        - Injection (SQL, Command, etc.)
+        - Cross-site scripting (XSS)
+        - Cross-site request forgery (CSRF)
+        - Insecure dependencies
+        - Information disclosure
+        - Denial of service
+        - Cryptographic issue
+        - Configuration issue
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the security issue (avoid sensitive details if this is a real vulnerability)
+      placeholder: |
+        Please provide:
+        - High-level description of the issue
+        - Potential impact
+        - General affected areas
+        
+        ⚠️ Do not include:
+        - Specific exploit code
+        - Detailed attack vectors
+        - Sensitive system information
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: What environment is affected?
+      placeholder: |
+        - Component version: [e.g., mcp-server v1.0.0]
+        - Deployment type: [e.g., Docker, standalone]
+        - Network configuration: [e.g., public-facing, internal only]
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Potential Impact
+      description: What could happen if this vulnerability is exploited?
+      placeholder: |
+        Describe the potential impact:
+        - Data exposure
+        - Service disruption
+        - Unauthorized access
+        - System compromise
+        - etc.
+
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: Suggested Mitigation
+      description: Do you have suggestions for fixing or mitigating this issue?
+      placeholder: |
+        If you have ideas for:
+        - Code changes
+        - Configuration improvements
+        - Workarounds
+        - Security controls
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Security Confirmation
+      description: Please confirm the following
+      options:
+        - label: I understand this is for non-sensitive security issues only
+          required: true
+        - label: I have not included sensitive exploit details in this public report
+          required: true
+        - label: I will report actual vulnerabilities through private channels
+          required: true
+        - label: I have checked that this issue hasn't been reported before
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## 📞 Private Reporting
+        
+        **For actual security vulnerabilities, please use:**
+        - 📧 Email: security@example.com
+        - 🔒 GitHub Private Vulnerability Reporting
+        - 💬 Direct contact with maintainers
+        
+        Thank you for helping keep the project secure! 🛡️

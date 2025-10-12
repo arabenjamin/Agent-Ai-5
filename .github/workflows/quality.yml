@@ -1,0 +1,236 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+
+jobs:
+  lint:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [mcp-client, mcp-http-bridge, mcp-server]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Check code formatting
+      run: cargo fmt --check
+      working-directory: ${{ matrix.project }}
+
+    - name: Run Clippy with extra lints
+      run: |
+        cargo clippy --all-targets --all-features -- \
+          -D warnings \
+          -D clippy::all \
+          -D clippy::pedantic \
+          -D clippy::cargo \
+          -A clippy::multiple_crate_versions \
+          -A clippy::module_name_repetitions \
+          -A clippy::must_use_candidate
+      working-directory: ${{ matrix.project }}
+
+    - name: Check for unused dependencies
+      run: |
+        if ! command -v cargo-machete &> /dev/null; then
+          cargo install cargo-machete
+        fi
+        cargo machete
+      working-directory: ${{ matrix.project }}
+
+  documentation:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [mcp-client, mcp-http-bridge, mcp-server]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Check documentation
+      run: cargo doc --no-deps --document-private-items
+      working-directory: ${{ matrix.project }}
+      env:
+        RUSTDOCFLAGS: "-D warnings"
+
+    - name: Test documentation examples
+      run: cargo test --doc
+      working-directory: ${{ matrix.project }}
+
+    - name: Upload documentation
+      if: github.ref == 'refs/heads/master' && matrix.project == 'mcp-client'
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: ${{ matrix.project }}/target/doc
+
+  cargo-deny:
+    name: Cargo Deny
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [mcp-client, mcp-http-bridge, mcp-server]
+        checks: [bans, licenses, sources]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install cargo-deny
+      run: cargo install cargo-deny
+
+    - name: Run cargo-deny
+      run: cargo deny --workspace check ${{ matrix.checks }}
+      working-directory: ${{ matrix.project }}
+
+  msrv:
+    name: Minimum Supported Rust Version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [mcp-client, mcp-http-bridge, mcp-server]
+        rust: ['1.70', '1.75', 'stable']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+
+    - name: Check build with MSRV
+      run: cargo check --all-targets
+      working-directory: ${{ matrix.project }}
+
+    - name: Run tests with MSRV
+      run: cargo test
+      working-directory: ${{ matrix.project }}
+
+  performance:
+    name: Performance Analysis
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install criterion
+      run: cargo install cargo-criterion
+
+    - name: Run performance benchmarks
+      run: |
+        for project in mcp-client mcp-http-bridge mcp-server; do
+          cd $project
+          if grep -q "criterion" Cargo.toml; then
+            echo "🏃 Running benchmarks for $project..."
+            cargo criterion --output-format html
+          else
+            echo "ℹ️ No benchmarks configured for $project"
+          fi
+          cd ..
+        done
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: "**/target/criterion"
+
+  test-matrix:
+    name: Extended Test Matrix
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable, beta]
+        project: [mcp-client, mcp-http-bridge, mcp-server]
+        features: ['', '--all-features', '--no-default-features']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+
+    - name: Run tests with feature matrix
+      run: cargo test ${{ matrix.features }}
+      working-directory: ${{ matrix.project }}
+
+  complexity:
+    name: Code Complexity Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install tokei (for code statistics)
+      run: cargo install tokei
+
+    - name: Generate code statistics
+      run: |
+        echo "# Code Statistics" > code-stats.md
+        echo "" >> code-stats.md
+        tokei --output markdown >> code-stats.md
+
+    - name: Install scc (alternative code counter)
+      run: |
+        wget https://github.com/boyter/scc/releases/download/v3.0.0/scc-3.0.0-i386-unknown-linux.zip
+        unzip scc-3.0.0-i386-unknown-linux.zip
+        chmod +x scc
+
+    - name: Run complexity analysis
+      run: |
+        echo "# Complexity Analysis" > complexity.md
+        echo "" >> complexity.md
+        ./scc --by-file --format markdown >> complexity.md
+
+    - name: Upload analysis results
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-analysis
+        path: |
+          code-stats.md
+          complexity.md
+
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    needs: documentation
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v2

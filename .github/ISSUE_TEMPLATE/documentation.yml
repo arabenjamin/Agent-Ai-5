@@ -1,0 +1,107 @@
+name: Documentation Improvement
+description: Report an issue with documentation or suggest improvements
+title: "[Docs]: "
+labels: ["documentation", "triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve our documentation!
+
+  - type: dropdown
+    id: doc-type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation needs improvement?
+      options:
+        - README files
+        - API documentation
+        - Code comments
+        - Installation guide
+        - Usage examples
+        - Contributing guide
+        - Architecture documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: Which file or section needs improvement?
+      placeholder: e.g., mcp-client/README.md, API docs for McpClient, etc.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      description: What kind of documentation issue is this?
+      options:
+        - Missing information
+        - Incorrect information
+        - Unclear/confusing content
+        - Outdated content
+        - Typo/grammar error
+        - Missing examples
+        - Formatting issues
+        - New content needed
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the documentation issue or improvement needed
+      placeholder: |
+        Please provide details about:
+        - What's currently wrong or missing
+        - What should be added or changed
+        - Why this improvement is needed
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Content
+      description: If you have specific suggestions for the content, please provide them here
+      placeholder: |
+        You can provide:
+        - Corrected text
+        - Additional examples
+        - Better explanations
+        - Links to helpful resources
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Target Audience
+      description: Who would benefit from this documentation improvement?
+      options:
+        - New users/beginners
+        - Experienced users
+        - Contributors/developers
+        - System administrators
+        - Integration developers
+        - All users
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have provided clear details about the documentation issue
+          required: true
+        - label: I am willing to help improve this documentation
+          required: false

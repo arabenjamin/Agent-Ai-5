@@ -1,0 +1,228 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.VERSION }}
+    steps:
+    - name: Get version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ steps.get_version.outputs.VERSION }}
+        draft: false
+        prerelease: false
+        body: |
+          ## Changes in ${{ steps.get_version.outputs.VERSION }}
+          
+          ### Features
+          - Add your feature descriptions here
+          
+          ### Bug Fixes
+          - Add your bug fix descriptions here
+          
+          ### Performance Improvements
+          - Add performance improvement descriptions here
+          
+          ## Installation
+          
+          Download the appropriate binary for your platform from the assets below.
+          
+          ### Using cargo (if you have Rust installed)
+          ```bash
+          cargo install --git https://github.com/${{ github.repository }} --tag ${{ steps.get_version.outputs.VERSION }}
+          ```
+
+  build-release:
+    name: Build Release Binaries
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Linux
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: ""
+            archive_suffix: ".tar.gz"
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            suffix: ""
+            archive_suffix: ".tar.gz"
+          # Windows
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: ".exe"
+            archive_suffix: ".zip"
+          # macOS
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: ""
+            archive_suffix: ".tar.gz"
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: ""
+            archive_suffix: ".tar.gz"
+        project: [mcp-client, mcp-http-bridge, mcp-server]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Install musl tools (Linux musl only)
+      if: matrix.target == 'x86_64-unknown-linux-musl'
+      run: sudo apt-get install -y musl-tools
+
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-release-${{ matrix.project }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build release binary
+      run: cargo build --release --target ${{ matrix.target }}
+      working-directory: ${{ matrix.project }}
+
+    - name: Strip binary (Unix)
+      if: matrix.os != 'windows-latest'
+      run: strip target/${{ matrix.target }}/release/${{ matrix.project }}${{ matrix.suffix }}
+      working-directory: ${{ matrix.project }}
+
+    - name: Create archive (Unix)
+      if: matrix.archive_suffix == '.tar.gz'
+      run: |
+        cd ${{ matrix.project }}/target/${{ matrix.target }}/release
+        tar czf ${{ matrix.project }}-${{ needs.create-release.outputs.version }}-${{ matrix.target }}${{ matrix.archive_suffix }} ${{ matrix.project }}${{ matrix.suffix }}
+
+    - name: Create archive (Windows)
+      if: matrix.archive_suffix == '.zip'
+      run: |
+        cd ${{ matrix.project }}/target/${{ matrix.target }}/release
+        7z a ${{ matrix.project }}-${{ needs.create-release.outputs.version }}-${{ matrix.target }}${{ matrix.archive_suffix }} ${{ matrix.project }}${{ matrix.suffix }}
+
+    - name: Upload release asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ${{ matrix.project }}/target/${{ matrix.target }}/release/${{ matrix.project }}-${{ needs.create-release.outputs.version }}-${{ matrix.target }}${{ matrix.archive_suffix }}
+        asset_name: ${{ matrix.project }}-${{ needs.create-release.outputs.version }}-${{ matrix.target }}${{ matrix.archive_suffix }}
+        asset_content_type: application/octet-stream
+
+  publish-docker:
+    name: Publish Docker Images
+    needs: [create-release, build-release]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [mcp-http-bridge, mcp-server]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: |
+          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.project }}
+          ghcr.io/${{ github.repository_owner }}/${{ matrix.project }}
+        tags: |
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.project }}
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: [create-release, build-release]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [mcp-client, mcp-http-bridge, mcp-server]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Publish to crates.io
+      run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+      working-directory: ${{ matrix.project }}
+      continue-on-error: true  # In case the version is already published
+
+  notify:
+    name: Notify Release
+    needs: [create-release, build-release, publish-docker, publish-crates]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Notify on success
+      if: needs.build-release.result == 'success'
+      run: |
+        echo "✅ Release ${{ needs.create-release.outputs.version }} completed successfully!"
+        echo "📦 Binaries uploaded to GitHub Releases"
+        echo "🐳 Docker images pushed to registries"
+        echo "📦 Crates published to crates.io"
+
+    - name: Notify on failure
+      if: needs.build-release.result == 'failure'
+      run: |
+        echo "❌ Release ${{ needs.create-release.outputs.version }} failed!"
+        echo "Please check the workflow logs for details."
+        exit 1
