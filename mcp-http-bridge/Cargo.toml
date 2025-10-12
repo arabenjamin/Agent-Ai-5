@@ -3,6 +3,14 @@ name = "mcp-http-bridge"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "mcp-http-bridge"
+path = "src/main.rs"
+
+[lib]
+name = "mcp_http_bridge"
+path = "src/lib.rs"
+
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }
 axum = "0.7"
@@ -15,6 +23,15 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
 clap = { version = "4.0", features = ["derive"] }
 reqwest = { version = "0.11", features = ["json"] }
+utoipa = { version = "4.0", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "4.0", features = ["axum"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+assert-json-diff = "2.0"
+wiremock = "0.5"
+tempfile = "3.8"
+axum-test = "15.0"
 
 [profile.release]
 strip = true
